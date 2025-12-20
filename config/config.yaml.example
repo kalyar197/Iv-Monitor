@@ -1,0 +1,44 @@
+binance:
+  api_key: "${BINANCE_API_KEY}"
+  api_secret: "${BINANCE_API_SECRET}"
+  base_url: "https://eapi.binance.com"
+  websocket_url: "wss://nbstream.binance.com/eoptions/ws"
+
+monitoring:
+  # Option symbols to monitor (supports patterns)
+  symbols:
+    # Pattern examples:
+    # - "BTC-*-ATM-C"           # All BTC ATM calls
+    # - "BTC-250131-*-C"        # All Jan 31, 2025 calls
+    # - "BTC-250131-50000-C"    # Specific contract
+
+    - "BTC-*-ATM-C"
+    - "BTC-*-ATM-P"
+
+  # Alert when IV exceeds this threshold (percentage)
+  iv_threshold: 80.0
+
+  # Minimum time (in minutes) between alerts for the same symbol
+  alert_cooldown: 15
+
+  # Fallback polling interval (seconds) if WebSocket fails
+  check_interval: 5
+
+  # ATM range: strikes within this % of spot price are considered ATM
+  atm_range_percent: 5.0
+
+discord:
+  webhook_url: "${DISCORD_WEBHOOK_URL}"
+
+  # Optional: Discord role ID to mention (e.g., "123456789012345678")
+  # Set to "@everyone" to mention everyone (use cautiously!)
+  # Set to null to disable mentions
+  mention_role_id: null
+
+  # Enable/disable startup notification
+  send_startup_notification: true
+
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  file: "logs/iv_monitor.log"
+  console_colors: true

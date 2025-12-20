@@ -1,0 +1,80 @@
+binance:
+  api_key: "${BINANCE_API_KEY}"
+  api_secret: "${BINANCE_API_SECRET}"
+  base_url: "https://eapi.binance.com"
+  websocket_url: "wss://nbstream.binance.com/eoptions/ws"
+
+monitoring:
+  # Option symbols to monitor (supports patterns)
+  symbols:
+    # Pattern examples:
+    # - "BTC-*-ATM-C"           # All BTC ATM calls
+    # - "BTC-250131-*-C"        # All Jan 31, 2025 calls
+    # - "BTC-250131-50000-C"    # Specific contract
+
+    - "BTC-*-ATM-C"
+    - "BTC-*-ATM-P"
+
+  # Alert when IV exceeds this threshold (percentage)
+  iv_threshold: 50.0
+
+  # Minimum open interest to consider option liquid/tradable
+  min_open_interest: 10000
+
+  # Re-alert when IV increases by this percentage (e.g., 60% → 61%)
+  iv_increase_threshold: 1.0
+
+  # Polling interval (seconds) for checking mark prices & IV
+  check_interval: 10
+
+  # ATM range: strikes within this % of spot price are considered ATM
+  atm_range_percent: 5.0
+
+  # Expiry filtering: only monitor options with expiry in this range (days from today)
+  # Set to null to disable expiry filtering
+  min_days_to_expiry: 0  # Start from today
+  max_days_to_expiry: 30  # All expiries within the next month
+
+# Database configuration for synthetic ATM IV tracking
+database:
+  path: "data/atm_iv.sqlite"
+
+# Statistical analysis for abnormal IV detection
+statistics:
+  # Mode: 'simple' or 'statistical'
+  # - 'simple': Alert when any ATM strike exceeds iv_threshold (no database, no Z-scores)
+  # - 'statistical': Full Z-score analysis with database tracking
+  mode: 'simple'
+
+  # The following settings only apply in 'statistical' mode:
+  # Z-score threshold for abnormal IV alerts (2.0 = 2 standard deviations)
+  z_score_threshold: 2.0
+
+  # Minimum number of samples required before calculating Z-score
+  min_samples: 10
+
+  # Minimum hours of history required before calculating Z-score
+  # This prevents meaningless Z-scores during system startup
+  min_history_hours: 4.0
+
+# Delta filtering for sellable strikes
+filtering:
+  # Only show strikes with delta in this range
+  delta_min: 0.05
+  delta_max: 0.65
+
+discord:
+  webhook_url: "${DISCORD_WEBHOOK_URL}"
+
+  # Optional: Discord role ID to mention (e.g., "123456789012345678")
+  # Set to "@everyone" to mention everyone (use cautiously!)
+  # Set to null to disable mentions
+  mention_role_id: null
+
+  # Enable/disable startup notification
+  send_startup_notification: true
+
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  file: "logs/iv_monitor.log"
+  console_colors: true
