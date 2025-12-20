@@ -45,7 +45,7 @@ The system uses **REST API polling** (every 10 seconds), NOT WebSocket streaming
 - Symbol filtering (patterns + ATM + expiry filtering)
 - Manages `monitored_symbols` list based on patterns
 - Implements alert cooldown (15 min per symbol by default)
-- **ATM filtering**: Selects 4 strikes below + ATM + 4 strikes above for each expiry
+- **ATM filtering**: Selects 2 strikes below + ATM + 2 strikes above for each expiry
 - **Expiry filtering**: Only monitors options with `min_days_to_expiry <= days <= max_days_to_expiry`
 
 **src/binance_client.py** (`BinanceOptionsClient`)
@@ -79,8 +79,8 @@ Examples:
 1. Fetch spot price from Binance Spot API
 2. Group symbols by expiry
 3. For each expiry, find ATM strike (closest to spot)
-4. Select 4 strikes below ATM, ATM itself, and 4 strikes above ATM
-5. Result: Up to 9 strikes per expiry per option type
+4. Select 2 strikes below ATM, ATM itself, and 2 strikes above ATM
+5. Result: Up to 5 strikes per expiry per option type
 
 **Expiry Filtering**:
 - `min_days_to_expiry` / `max_days_to_expiry` in config
@@ -136,8 +136,8 @@ Prevents spam when IV stays elevated. Per-symbol tracking ensures one high-IV op
 # For each expiry:
 1. Sort all strikes by price
 2. Find ATM index: closest strike to spot price
-3. Select strikes[atm_idx - 4 : atm_idx + 5]
-   # This gives 4 below, ATM, and 4 above
+3. Select strikes[atm_idx - 2 : atm_idx + 3]
+   # This gives 2 below, ATM, and 2 above
 ```
 
 All strikes come from Binance `/eapi/v1/exchangeInfo` - no assumptions or calculations.

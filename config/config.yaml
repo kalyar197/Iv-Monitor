@@ -36,6 +36,10 @@ monitoring:
   # Polling interval (seconds) for checking mark prices & IV
   check_interval: 10
 
+  # Alert cooldown (seconds) - minimum time between alerts per expiry
+  # 900 seconds = 15 minutes
+  alert_cooldown: 900
+
   # ATM range: strikes within this % of spot price are considered ATM
   atm_range_percent: 5.0
 

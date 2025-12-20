@@ -93,6 +93,7 @@ class IVMonitor:
         self.atm_range_percent = monitoring.get('atm_range_percent', 5.0)
         self.min_days_to_expiry = monitoring.get('min_days_to_expiry')
         self.max_days_to_expiry = monitoring.get('max_days_to_expiry')
+        self.alert_cooldown: int = monitoring.get('alert_cooldown', 900)  # 15 min default in seconds
 
         # Filtering configuration
         filtering_config = config.get('filtering', {})
@@ -106,6 +107,7 @@ class IVMonitor:
         self.spot_prices: Dict[str, float] = {}
         self.perpetual_mark_prices: Dict[str, float] = {}
         self.funding_rates: Dict[str, float] = {}
+        self.last_alert_time: Dict[str, datetime] = {}
 
         # Account data cache (for Greeks/IV if available)
         self._account_data: Optional[Dict[str, Any]] = None
