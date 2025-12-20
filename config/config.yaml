@@ -1,8 +1,17 @@
+# Exchange selection - choose which exchange to use
+exchange: "deribit"  # Options: "deribit", "binance" (binance blocked from cloud IPs)
+
 binance:
   api_key: "${BINANCE_API_KEY}"
   api_secret: "${BINANCE_API_SECRET}"
   base_url: "https://eapi.binance.com"
   websocket_url: "wss://nbstream.binance.com/eoptions/ws"
+
+deribit:
+  # PUBLIC API - no authentication required!
+  # Works from any IP including cloud datacenters
+  base_url: "https://www.deribit.com"
+  # No API keys needed for public market data
 
 monitoring:
   # Option symbols to monitor (supports patterns)

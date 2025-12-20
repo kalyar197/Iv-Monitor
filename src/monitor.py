@@ -1,4 +1,4 @@
-"""Main monitoring orchestrator for Binance Options IV."""
+"""Main monitoring orchestrator for Options IV (Binance or Deribit)."""
 import asyncio
 import fnmatch
 import logging
@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set
 
 from .binance_client import BinanceOptionsClient
+from .deribit_client import DeribitOptionsClient
 from .discord_notifier import DiscordNotifier
 from .atm_db import ATMDatabase
 from .statistics import StatisticalAnalyzer
@@ -34,15 +35,26 @@ class IVMonitor:
         self.config = config
         self.logger = logger or logging.getLogger(__name__)
 
-        # Initialize components
-        binance_config = config['binance']
-        self.client = BinanceOptionsClient(
-            api_key=binance_config['api_key'],
-            api_secret=binance_config['api_secret'],
-            base_url=binance_config['base_url'],
-            websocket_url=binance_config['websocket_url'],
-            logger=self.logger
-        )
+        # Initialize exchange client based on configuration
+        self.exchange_name = config.get('exchange', 'binance').lower()
+
+        if self.exchange_name == 'deribit':
+            deribit_config = config['deribit']
+            self.client = DeribitOptionsClient(
+                base_url=deribit_config['base_url'],
+                logger=self.logger
+            )
+            self.logger.info("Using Deribit exchange (PUBLIC API - no authentication)")
+        else:  # binance
+            binance_config = config['binance']
+            self.client = BinanceOptionsClient(
+                api_key=binance_config['api_key'],
+                api_secret=binance_config['api_secret'],
+                base_url=binance_config['base_url'],
+                websocket_url=binance_config['websocket_url'],
+                logger=self.logger
+            )
+            self.logger.info("Using Binance exchange")
 
         discord_config = config['discord']
         self.notifier = DiscordNotifier(
@@ -174,8 +186,15 @@ class IVMonitor:
         self.logger.info("Discovering option symbols...")
 
         try:
-            exchange_info = await self.client.get_exchange_info()
-            all_symbols = [s['symbol'] for s in exchange_info.get('optionSymbols', [])]
+            # Fetch symbols based on exchange
+            if self.exchange_name == 'deribit':
+                # Deribit: get_instruments returns list of instruments
+                instruments = await self.client.get_instruments(currency="BTC", kind="option", expired=False)
+                all_symbols = [inst['instrument_name'] for inst in instruments]
+            else:
+                # Binance: get_exchange_info returns dict with optionSymbols array
+                exchange_info = await self.client.get_exchange_info()
+                all_symbols = [s['symbol'] for s in exchange_info.get('optionSymbols', [])]
 
             self.logger.info(f"Found {len(all_symbols)} total option symbols")
 
@@ -230,19 +249,44 @@ class IVMonitor:
 
     def _parse_expiry_date(self, expiry_str: str) -> Optional[datetime]:
         """
-        Parse expiry date from symbol format (YYMMDD).
+        Parse expiry date from symbol format.
+
+        Supports both formats:
+        - Binance: YYMMDD (e.g., "260130" for Jan 30, 2026)
+        - Deribit: DDMMMYY (e.g., "27DEC24" for Dec 27, 2024)
 
         Args:
-            expiry_str: Expiry date string (e.g., "260130" for Jan 30, 2026)
+            expiry_str: Expiry date string
 
         Returns:
             Datetime object or None if parsing fails
         """
         try:
-            year = 2000 + int(expiry_str[:2])
-            month = int(expiry_str[2:4])
-            day = int(expiry_str[4:6])
-            return datetime(year, month, day)
+            # Try Binance format first: YYMMDD (6 digits)
+            if expiry_str.isdigit() and len(expiry_str) == 6:
+                year = 2000 + int(expiry_str[:2])
+                month = int(expiry_str[2:4])
+                day = int(expiry_str[4:6])
+                return datetime(year, month, day)
+
+            # Try Deribit format: DDMMMYY (e.g., "27DEC24")
+            elif len(expiry_str) == 7:
+                day = int(expiry_str[:2])
+                month_str = expiry_str[2:5].upper()
+                year = 2000 + int(expiry_str[5:7])
+
+                month_map = {
+                    'JAN': 1, 'FEB': 2, 'MAR': 3, 'APR': 4, 'MAY': 5, 'JUN': 6,
+                    'JUL': 7, 'AUG': 8, 'SEP': 9, 'OCT': 10, 'NOV': 11, 'DEC': 12
+                }
+                month = month_map.get(month_str)
+                if month is None:
+                    return None
+
+                return datetime(year, month, day)
+            else:
+                return None
+
         except (ValueError, IndexError):
             return None
 
@@ -380,11 +424,19 @@ class IVMonitor:
                 perp_symbol = f"{underlying}USDT"
 
                 try:
-                    # Fetch both spot and perpetual data in parallel
-                    spot_price, (perp_mark_price, funding_rate) = await asyncio.gather(
-                        self.client.get_spot_price(spot_symbol),
-                        self.client.get_perpetual_data(perp_symbol)
-                    )
+                    if self.exchange_name == 'deribit':
+                        # Deribit: use get_index_price and get_perpetual_data
+                        index_price, (perp_mark_price, funding_rate) = await asyncio.gather(
+                            self.client.get_index_price(f"{underlying.lower()}_usd"),
+                            self.client.get_perpetual_data(underlying)
+                        )
+                        spot_price = index_price
+                    else:
+                        # Binance: use get_spot_price and get_perpetual_data
+                        spot_price, (perp_mark_price, funding_rate) = await asyncio.gather(
+                            self.client.get_spot_price(spot_symbol),
+                            self.client.get_perpetual_data(perp_symbol)
+                        )
 
                     self.spot_prices[spot_symbol] = spot_price
                     self.perpetual_mark_prices[perp_symbol] = perp_mark_price
@@ -421,8 +473,34 @@ class IVMonitor:
         - 'statistical': Full Z-score analysis with database tracking
         """
         try:
-            # Fetch mark prices for all symbols (batched request)
-            mark_data_list = await self.client.get_mark_price()
+            # Fetch mark prices based on exchange
+            if self.exchange_name == 'deribit':
+                # Deribit: get_book_summary_by_currency returns all options at once
+                mark_data_list = await self.client.get_book_summary_by_currency(currency="BTC", kind="option")
+
+                # Normalize field names to match Binance format for compatibility
+                normalized_marks = []
+                for mark in mark_data_list:
+                    # Deribit greeks can be nested or at top level depending on endpoint
+                    greeks = mark.get('greeks', {})
+                    normalized = {
+                        'symbol': mark.get('instrument_name', ''),
+                        'markIV': mark.get('mark_iv', 0),  # Already in decimal (0.5025 = 50.25%)
+                        'bidIV': mark.get('bid_iv', 0),
+                        'askIV': mark.get('ask_iv', 0),
+                        'sumOpenInterest': mark.get('open_interest', 0),
+                        'markPrice': mark.get('mark_price', 0),
+                        # Try nested greeks first, fallback to top-level
+                        'delta': greeks.get('delta', mark.get('delta', 0)),
+                        'gamma': greeks.get('gamma', mark.get('gamma', 0)),
+                        'theta': greeks.get('theta', mark.get('theta', 0)),
+                        'vega': greeks.get('vega', mark.get('vega', 0)),
+                    }
+                    normalized_marks.append(normalized)
+                mark_data_list = normalized_marks
+            else:
+                # Binance: get_mark_price returns list with standard fields
+                mark_data_list = await self.client.get_mark_price()
 
             # Filter to only our monitored symbols
             monitored_set = set(self.monitored_symbols)
