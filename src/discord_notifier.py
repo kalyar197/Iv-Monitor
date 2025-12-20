@@ -504,16 +504,37 @@ class DiscordNotifier:
         """
         Calculate days to expiry.
 
+        Supports both formats:
+        - Binance: YYMMDD (e.g., "260130" for Jan 30, 2026)
+        - Deribit: DDMMMYY (e.g., "26DEC25" for Dec 26, 2025)
+
         Args:
-            expiry_date: YYMMDD format
+            expiry_date: Expiry date string
 
         Returns:
             Days to expiry
         """
         try:
-            year = 2000 + int(expiry_date[:2])
-            month = int(expiry_date[2:4])
-            day = int(expiry_date[4:6])
+            # Try Binance format first: YYMMDD (6 digits)
+            if expiry_date.isdigit() and len(expiry_date) == 6:
+                year = 2000 + int(expiry_date[:2])
+                month = int(expiry_date[2:4])
+                day = int(expiry_date[4:6])
+            # Try Deribit format: DDMMMYY (e.g., "26DEC25")
+            elif len(expiry_date) == 7:
+                day = int(expiry_date[:2])
+                month_str = expiry_date[2:5].upper()
+                year = 2000 + int(expiry_date[5:7])
+
+                month_map = {
+                    'JAN': 1, 'FEB': 2, 'MAR': 3, 'APR': 4, 'MAY': 5, 'JUN': 6,
+                    'JUL': 7, 'AUG': 8, 'SEP': 9, 'OCT': 10, 'NOV': 11, 'DEC': 12
+                }
+                month = month_map.get(month_str, 0)
+                if month == 0:
+                    return 0
+            else:
+                return 0
 
             expiry_datetime = datetime(year, month, day)
             delta = expiry_datetime - datetime.utcnow()

@@ -483,11 +483,32 @@ class IVMonitor:
                 for mark in mark_data_list:
                     # Deribit greeks can be nested or at top level depending on endpoint
                     greeks = mark.get('greeks', {})
+
+                    # Deribit returns mark_iv as percentage (43.12 = 43.12%), not decimal!
+                    # Convert to decimal to match Binance format (0.4312)
+                    mark_iv = mark.get('mark_iv', 0)
+                    if mark_iv is not None:
+                        mark_iv = mark_iv / 100.0  # Convert percentage to decimal
+                    else:
+                        mark_iv = 0
+
+                    bid_iv = mark.get('bid_iv', 0)
+                    if bid_iv is not None:
+                        bid_iv = bid_iv / 100.0
+                    else:
+                        bid_iv = 0
+
+                    ask_iv = mark.get('ask_iv', 0)
+                    if ask_iv is not None:
+                        ask_iv = ask_iv / 100.0
+                    else:
+                        ask_iv = 0
+
                     normalized = {
                         'symbol': mark.get('instrument_name', ''),
-                        'markIV': mark.get('mark_iv', 0),  # Already in decimal (0.5025 = 50.25%)
-                        'bidIV': mark.get('bid_iv', 0),
-                        'askIV': mark.get('ask_iv', 0),
+                        'markIV': mark_iv,  # Now in decimal format like Binance
+                        'bidIV': bid_iv,
+                        'askIV': ask_iv,
                         'sumOpenInterest': mark.get('open_interest', 0),
                         'markPrice': mark.get('mark_price', 0),
                         # Try nested greeks first, fallback to top-level
@@ -607,7 +628,7 @@ class IVMonitor:
         Simple threshold-based IV checking (no database, no Z-scores).
 
         For each expiry:
-        1. Check if ANY ATM strike has markIV > threshold AND openInterest > min
+        1. Check if ANY ATM strike has markIV > threshold AND openInterest > min AND delta in range
         2. If yes, send alert with list of triggered strikes
         3. Apply progressive threshold tracking (+1% increments)
         4. Auto-reset when IV drops 2% below initial alert
@@ -617,15 +638,19 @@ class IVMonitor:
         """
         for expiry_date, marks in expiry_groups.items():
             try:
-                # Find all strikes that exceed threshold with sufficient liquidity
+                # Find all strikes that exceed threshold with sufficient liquidity AND sellable delta
                 triggered_strikes = []
 
                 for mark in marks:
                     mark_iv = float(mark.get('markIV', 0)) * 100  # Convert to percentage
                     open_interest = float(mark.get('sumOpenInterest', 0))
+                    delta = abs(float(mark.get('delta', 0)))  # Absolute value for puts/calls
 
-                    # Check both IV threshold AND liquidity filter
-                    if mark_iv > self.iv_threshold and open_interest > self.min_open_interest:
+                    # Check IV threshold AND liquidity AND delta range (sellable options only)
+                    if (mark_iv > self.iv_threshold and
+                        open_interest > self.min_open_interest and
+                        self.delta_min <= delta <= self.delta_max):
+
                         triggered_strikes.append({
                             'symbol': mark['symbol'],
                             'markIV': mark_iv,
