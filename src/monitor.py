@@ -93,7 +93,6 @@ class IVMonitor:
         self.atm_range_percent = monitoring.get('atm_range_percent', 5.0)
         self.min_days_to_expiry = monitoring.get('min_days_to_expiry')
         self.max_days_to_expiry = monitoring.get('max_days_to_expiry')
-        self.alert_cooldown: int = monitoring.get('alert_cooldown', 900)  # 15 min default in seconds
 
         # Filtering configuration
         filtering_config = config.get('filtering', {})
@@ -107,7 +106,6 @@ class IVMonitor:
         self.spot_prices: Dict[str, float] = {}
         self.perpetual_mark_prices: Dict[str, float] = {}
         self.funding_rates: Dict[str, float] = {}
-        self.last_alert_time: Dict[str, datetime] = {}
 
         # Account data cache (for Greeks/IV if available)
         self._account_data: Optional[Dict[str, Any]] = None
@@ -803,10 +801,6 @@ class IVMonitor:
             )
             return  # Normal, skip
 
-        # Check cooldown (per expiry, not per symbol)
-        if not self._check_cooldown(expiry_date):
-            return
-
         # Get smart sellable strikes (sorted by opportunity)
         sellable_strikes = self.analyzer.get_smart_sellable_strikes(
             all_marks,
@@ -838,30 +832,3 @@ class IVMonitor:
             perp_mark_price,
             funding_rate
         )
-
-        # Update cooldown tracker (by expiry, not symbol)
-        self.last_alert_time[expiry_date] = datetime.utcnow()
-
-    def _check_cooldown(self, key: str) -> bool:
-        """
-        Check if alert cooldown has passed for given key (symbol or expiry).
-
-        Args:
-            key: Symbol or expiry identifier
-
-        Returns:
-            True if alert can be sent, False if in cooldown
-        """
-        last_alert = self.last_alert_time.get(key)
-        if not last_alert:
-            return True
-
-        time_since_alert = (datetime.utcnow() - last_alert).total_seconds()
-        if time_since_alert < self.alert_cooldown:
-            self.logger.debug(
-                f"{key}: In cooldown - "
-                f"{int(self.alert_cooldown - time_since_alert)}s remaining"
-            )
-            return False
-
-        return True
