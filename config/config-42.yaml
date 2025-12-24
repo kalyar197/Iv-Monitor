@@ -25,7 +25,7 @@ monitoring:
     - "BTC-*-ATM-P"
 
   # Alert when IV exceeds this threshold (percentage)
-  iv_threshold: 45.0
+  iv_threshold: 42.0
 
   # Minimum open interest to consider option liquid/tradable
   min_open_interest: 10000
@@ -73,7 +73,7 @@ filtering:
   delta_max: 0.65
 
 discord:
-  webhook_url: "${DISCORD_WEBHOOK_URL}"
+  webhook_url: "${DISCORD_WEBHOOK_URL_42}"
 
   # Optional: Discord role ID to mention (e.g., "123456789012345678")
   # Set to "@everyone" to mention everyone (use cautiously!)
@@ -85,5 +85,5 @@ discord:
 
 logging:
   level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
-  file: "logs/iv_monitor_45.log"
+  file: "logs/iv_monitor_42.log"
   console_colors: true
